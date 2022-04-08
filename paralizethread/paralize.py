@@ -1,15 +1,19 @@
 
+from asyncio.log import logger
 import inspect
 from re import S
 from threading import Thread
 from queue import Queue
 from .utils import queue_to_list
+from .thread_loger import ThreadsLogs, stdout_to_logs
 class ParallelizeThread:
     def __init__(self, threads_provider, log_provider=print, return_provider=all):
         self.thread_provider = threads_provider
         self.log_provider = log_provider
         self.return_provider = return_provider
         self.threads_resuatl_queue = Queue()
+        defualt_logger = ThreadsLogs(stdout_to_logs)
+        self.log_provider = defualt_logger
 
     def _get_ranges(self, number_of_threads, bigst_number):
         number_ranges = []
@@ -32,12 +36,20 @@ class ParallelizeThread:
         for list_range in list_ranges:
             lists.append(lis[list_range[0]: list_range[1]])
         return lists
+    def _wraped_print(self, thread_number):
+        def new_print(string, thread_number=thread_number):
+            self.log_provider.print(string, thread_number)
+        return new_print
+
     def _wrap_function_in_thread(self, *args, **kwargs):
-        return_value = args[0](*(args[1::]), **kwargs)
+        print = self._wraped_print(args[0])  
+        args[1].__call__.__self__.__globals__['__builtins__']['print'] = print
+      
+        return_value = args[1](*(args[2::]), **kwargs)
         self.threads_resuatl_queue.put(return_value)
 
     def _run_func_in_thread(self, func, thread_number, args, kwargs):
-        self.thread_provider(target=self._wrap_function_in_thread, args=(func,) + (args, ), kwargs=kwargs).run()
+        self.thread_provider(target=self._wrap_function_in_thread, args=(thread_number, func,) + (args, ), kwargs=kwargs).run()
         # self.log_provider("thread finished {}".format(thread_number))
 
     def _is_param_in_keywargs(self, func, unic_thread_param, kwargs):
